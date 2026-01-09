@@ -90,7 +90,12 @@ jobs:
             curl -X POST https://circleci.com/api/v2/project/github/Amey1109/terra-lambdas/pipeline \
               -H "Circle-Token: $CIRCLECI_TOKEN" \
               -H "Content-Type: application/json" \
-              -d '{ "branch": "master" }'
+              -d '{ 
+                "branch": "master",
+                 "parameters": {
+                    "run_from_lambda": true
+                  }
+              }'
 
 workflows:
   lambda-deploy:
