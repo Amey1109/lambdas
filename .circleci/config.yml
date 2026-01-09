@@ -1,37 +1,49 @@
 version: 2.1
 
 jobs:
-  aws-smoke-test:
+  build-and-upload-lambdas:
     docker:
-      - image: cimg/base:stable
+      - image: cimg/node:20.11
+    working_directory: ~/repo
 
     steps:
       - checkout
 
       - run:
-          name: Install AWS CLI
+          name: Install dependencies
           command: |
             sudo apt-get update
-            sudo apt-get install -y awscli
+            sudo apt-get install -y awscli zip python3-pip
 
       - run:
-          name: Verify AWS identity
+          name: Build & upload all lambdas
           command: |
-            aws sts get-caller-identity
+            BUCKET="terra-lambdas"
 
-      - run:
-          name: Test S3 access
-          command: |
-            aws s3 ls s3://terra-lambdas
+            for dir in lambdas/*; do
+              if [ -d "$dir" ]; then
+                LAMBDA_NAME=$(basename "$dir")
+                echo "🚀 Processing $LAMBDA_NAME"
 
-      - run:
-          name: Test S3 upload (safe)
-          command: |
-            echo "circleci-smoke-test" > test.txt
-            aws s3 cp test.txt s3://terra-lambdas/circleci-smoke-test.txt
-            aws s3 rm s3://terra-lambdas/circleci-smoke-test.txt
+                cd "$dir"
 
-workflows:
-  aws-smoke-test-workflow:
-    jobs:
-      - aws-smoke-test
+                # Node.js lambda
+                if [ -f package.json ]; then
+                  echo "Detected Node.js lambda"
+                  npm install --production
+                fi
+
+                # Python lambda
+                if [ -f requirements.txt ]; then
+                  echo "Detected Python lambda"
+                  pip3 install -r requirements.txt -t .
+                fi
+
+                ZIP_NAME="${LAMBDA_NAME}.zip"
+                zip -r "$ZIP_NAME" .
+
+                aws s3 cp "$ZIP_NAME" "s3://$BUCKET/$ZIP_NAME"
+
+                cd - >/dev/null
+              fi
+            done
