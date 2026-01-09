@@ -1,16 +1,37 @@
 version: 2.1
 
 jobs:
-  say-hello:
+  aws-smoke-test:
     docker:
       - image: cimg/base:stable
+
     steps:
       - checkout
+
       - run:
-          name: Say Hello
-          command: echo "Hello from CircleCI!"
+          name: Install AWS CLI
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y awscli
+
+      - run:
+          name: Verify AWS identity
+          command: |
+            aws sts get-caller-identity
+
+      - run:
+          name: Test S3 access
+          command: |
+            aws s3 ls s3://terra-lambdas
+
+      - run:
+          name: Test S3 upload (safe)
+          command: |
+            echo "circleci-smoke-test" > test.txt
+            aws s3 cp test.txt s3://terra-lambdas/circleci-smoke-test.txt
+            aws s3 rm s3://terra-lambdas/circleci-smoke-test.txt
 
 workflows:
-  say-hello-workflow:
+  aws-smoke-test-workflow:
     jobs:
-      - say-hello
+      - aws-smoke-test
