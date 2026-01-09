@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   build-zip-upload:
     docker:
-      - image: cimg/node:20.11 # Node + npm
+      - image: cimg/node:20.11
     working_directory: ~/repo
 
     steps:
@@ -26,36 +26,41 @@ jobs:
 
             BUCKET="terra-lambdas"
 
-            for dir in lambdas/*/; do
-              dirname=$(basename "${dir%/}")
+            for dir in */; do
+              dirname=${dir%/}
 
-              echo "🚀 Processing lambda: $dirname"
+              # Skip hidden/system folders
+              if [[ "$dirname" == ".circleci" || "$dirname" == ".git" ]]; then
+                continue
+              fi
 
-              cd "$dir"
+              echo "🚀 Processing: $dirname"
+
+              cd "$dirname"
 
               # Node.js lambda
               if [ -f package.json ]; then
-                echo "📦 Detected Node.js — installing dependencies"
+                echo "📦 Node.js detected"
                 npm install --production
               fi
 
               # Python lambda
               if [ -f requirements.txt ]; then
-                echo "🐍 Detected Python — installing dependencies"
+                echo "🐍 Python detected"
                 pip3 install -r requirements.txt -t .
               fi
 
-              ZIP_PATH="../../${dirname}.zip"
-              echo "🗜 Zipping contents into $ZIP_PATH"
+              ZIP_PATH="../${dirname}.zip"
+              echo "🗜 Zipping contents to $ZIP_PATH"
               zip -rq "$ZIP_PATH" .
 
-              echo "☁️ Uploading to s3://$BUCKET/${dirname}.zip"
+              echo "☁️ Uploading ${dirname}.zip to S3"
               aws s3 cp "$ZIP_PATH" "s3://$BUCKET/${dirname}.zip"
 
               cd - >/dev/null
             done
 
-            echo "✅ All lambdas built and uploaded"
+            echo "✅ All folders zipped and uploaded"
 
 workflows:
   build-zip-upload-workflow:
