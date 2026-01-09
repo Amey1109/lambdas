@@ -1,7 +1,7 @@
 version: 2.1
 
 jobs:
-  build-zip-upload:
+  build-zips:
     docker:
       - image: cimg/node:20.11
     working_directory: ~/repo
@@ -10,67 +10,95 @@ jobs:
       - checkout
 
       - run:
-          name: Install system dependencies
+          name: Install build dependencies
           command: |
             sudo apt-get update
-            sudo apt-get install -y \
-              zip \
-              python3 \
-              python3-pip \
-              awscli
+            sudo apt-get install -y zip python3 python3-pip
 
       - run:
-          name: Build, zip & upload lambdas
+          name: Build & zip lambdas
           command: |
-            set -e
-
-            BUCKET="terra-lambdas"
+            set -euo pipefail
+            mkdir -p zips
 
             for dir in */; do
-              dirname=${dir%/}
+              name=${dir%/}
 
-              # Skip hidden/system folders
-              if [[ "$dirname" == ".circleci" || "$dirname" == ".git" ]]; then
+              if [[ "$name" == ".circleci" || "$name" == ".git" ]]; then
                 continue
               fi
 
-              echo "🚀 Processing: $dirname"
+              echo "🚀 Zipping $name"
+              cd "$name"
 
-              cd "$dirname"
-
-              # Node.js lambda
               if [ -f package.json ]; then
-                echo "📦 Node.js detected"
                 npm install --production
               fi
 
-              # Python lambda
               if [ -f requirements.txt ]; then
-                echo "🐍 Python detected"
                 pip3 install -r requirements.txt -t .
               fi
 
-              ZIP_PATH="../${dirname}.zip"
-              echo "🗜 Zipping contents to $ZIP_PATH"
-              zip -rq "$ZIP_PATH" .
-
-              echo "☁️ Uploading ${dirname}.zip to S3"
-              aws s3 cp "$ZIP_PATH" "s3://$BUCKET/${dirname}.zip"
-
+              zip -rq "../zips/${name}.zip" .
               cd - >/dev/null
             done
 
-            echo "✅ All folders zipped and uploaded"
+      - persist_to_workspace:
+          root: .
+          paths:
+            - zips
 
+  upload-zips:
+    docker:
+      - image: cimg/base:stable
+    working_directory: ~/repo
+
+    steps:
+      - attach_workspace:
+          at: .
+
+      - run:
+          name: Install AWS CLI
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y awscli
+
+      - run:
+          name: Upload zips to S3
+          command: |
+            set -euo pipefail
+            BUCKET="terra-lambdas"
+            COUNT=0
+
+            for zip in zips/*.zip; do
+              [ -e "$zip" ] || exit 1
+              echo "☁️ Uploading $zip"
+              aws s3 cp "$zip" "s3://$BUCKET/$(basename "$zip")"
+              COUNT=$((COUNT + 1))
+            done
+
+            echo "✅ Uploaded $COUNT zip(s)"
+
+  trigger-terraform:
+    docker:
+      - image: cimg/base:stable
+
+    steps:
       - run:
           name: Trigger Terraform pipeline
           command: |
-            curl -X POST https://circleci.com/api/v2/project/github/Amey1109/terra-lambdas/pipeline \
+            curl -f -X POST https://circleci.com/api/v2/project/github/<ORG>/<TERRAFORM_REPO>/pipeline \
               -H "Circle-Token: $CIRCLECI_TOKEN" \
               -H "Content-Type: application/json" \
-              -d '{ "branch": "master" }'
+              -d '{ "branch": "main" }'
 
 workflows:
-  build-zip-upload-workflow:
+  lambda-deploy:
     jobs:
-      - build-zip-upload
+      - build-zips
+      - upload-zips:
+          requires:
+            - build-zips
+      - trigger-terraform:
+          requires:
+            - upload-zips
