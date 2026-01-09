@@ -47,3 +47,8 @@ jobs:
                 cd - >/dev/null
               fi
             done
+
+workflows:
+  build-and-upload-lambdas:
+    jobs:
+      - build-and-upload-lambdas
