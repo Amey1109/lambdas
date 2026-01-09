@@ -1,54 +1,63 @@
 version: 2.1
 
 jobs:
-  build-and-upload-lambdas:
+  build-zip-upload:
     docker:
-      - image: cimg/node:20.11
+      - image: cimg/node:20.11 # Node + npm
     working_directory: ~/repo
 
     steps:
       - checkout
 
       - run:
-          name: Install dependencies
+          name: Install system dependencies
           command: |
             sudo apt-get update
-            sudo apt-get install -y awscli zip python3-pip
+            sudo apt-get install -y \
+              zip \
+              python3 \
+              python3-pip \
+              awscli
 
       - run:
-          name: Build & upload all lambdas
+          name: Build, zip & upload lambdas
           command: |
+            set -e
+
             BUCKET="terra-lambdas"
 
-            for dir in lambdas/*; do
-              if [ -d "$dir" ]; then
-                LAMBDA_NAME=$(basename "$dir")
-                echo "🚀 Processing $LAMBDA_NAME"
+            for dir in lambdas/*/; do
+              dirname=$(basename "${dir%/}")
 
-                cd "$dir"
+              echo "🚀 Processing lambda: $dirname"
 
-                # Node.js lambda
-                if [ -f package.json ]; then
-                  echo "Detected Node.js lambda"
-                  npm install --production
-                fi
+              cd "$dir"
 
-                # Python lambda
-                if [ -f requirements.txt ]; then
-                  echo "Detected Python lambda"
-                  pip3 install -r requirements.txt -t .
-                fi
-
-                ZIP_NAME="${LAMBDA_NAME}.zip"
-                zip -r "$ZIP_NAME" .
-
-                aws s3 cp "$ZIP_NAME" "s3://$BUCKET/$ZIP_NAME"
-
-                cd - >/dev/null
+              # Node.js lambda
+              if [ -f package.json ]; then
+                echo "📦 Detected Node.js — installing dependencies"
+                npm install --production
               fi
+
+              # Python lambda
+              if [ -f requirements.txt ]; then
+                echo "🐍 Detected Python — installing dependencies"
+                pip3 install -r requirements.txt -t .
+              fi
+
+              ZIP_PATH="../../${dirname}.zip"
+              echo "🗜 Zipping contents into $ZIP_PATH"
+              zip -rq "$ZIP_PATH" .
+
+              echo "☁️ Uploading to s3://$BUCKET/${dirname}.zip"
+              aws s3 cp "$ZIP_PATH" "s3://$BUCKET/${dirname}.zip"
+
+              cd - >/dev/null
             done
 
+            echo "✅ All lambdas built and uploaded"
+
 workflows:
-  build-and-upload-lambdas:
+  build-zip-upload-workflow:
     jobs:
-      - build-and-upload-lambdas
+      - build-zip-upload
