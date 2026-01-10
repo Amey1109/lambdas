@@ -118,6 +118,6 @@ workflows:
       - upload-zips:
           requires:
             - build-zips
-      # - trigger-terraform:
-      #     requires:
-      #       - upload-zips
+      - trigger-terraform:
+          requires:
+            - upload-zips
