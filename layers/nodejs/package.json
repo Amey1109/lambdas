@@ -1,0 +1,9 @@
+{
+  "name": "uuid-layer",
+  "version": "1.0.0",
+  "description": "Shared Node.js dependencies for AWS Lambda",
+  "private": true,
+  "dependencies": {
+    "uuid": "^9.0.1"
+  }
+}

@@ -16,30 +16,46 @@ jobs:
             sudo apt-get install -y zip python3 python3-pip
 
       - run:
-          name: Build & zip lambdas
+          name: Build Lambda zips
           command: |
             set -euo pipefail
-            mkdir -p zips
+            mkdir -p zips/lambdas
 
-            for dir in */; do
-              name=${dir%/}
+            for dir in lambdas/*/; do
+              name=$(basename "$dir")
+              echo "🚀 Building lambda: $name"
 
-              if [[ "$name" == ".circleci" || "$name" == ".git" ]]; then
-                continue
+              cd "$dir"
+              zip -rq "../../zips/lambdas/${name}.zip" .
+              cd - >/dev/null
+            done
+
+      - run:
+          name: Build Layer zips
+          command: |
+            set -euo pipefail
+            mkdir -p zips/layers
+
+            for layer in layers/*/; do
+              layer_name=$(basename "$layer")
+              echo "📦 Building layer: $layer_name"
+
+              cd "$layer"
+
+              if [ -d nodejs ]; then
+                cd nodejs
+
+                if [ -f package.json ]; then
+                  npm ci --omit=dev
+                fi
+
+                cd ..
+                zip -rq "../../zips/layers/${layer_name}.zip" nodejs
+              else
+                echo "❌ Layer $layer_name missing nodejs/ directory"
+                exit 1
               fi
 
-              echo "🚀 Zipping $name"
-              cd "$name"
-
-              if [ -f package.json ]; then
-                npm install --production
-              fi
-
-              if [ -f requirements.txt ]; then
-                pip3 install -r requirements.txt -t .
-              fi
-
-              zip -rq "../zips/${name}.zip" .
               cd - >/dev/null
             done
 
@@ -64,20 +80,17 @@ jobs:
             sudo apt-get install -y awscli
 
       - run:
-          name: Upload zips to S3
+          name: Upload Lambda & Layer zips to S3
           command: |
             set -euo pipefail
             BUCKET="terra-lambdas"
-            COUNT=0
 
-            for zip in zips/*.zip; do
-              [ -e "$zip" ] || exit 1
-              echo "☁️ Uploading $zip"
-              aws s3 cp "$zip" "s3://$BUCKET/$(basename "$zip")"
-              COUNT=$((COUNT + 1))
+            for type in lambdas layers; do
+              for zip in zips/$type/*.zip; do
+                echo "☁️ Uploading $zip"
+                aws s3 cp "$zip" "s3://$BUCKET/$type/$(basename "$zip")"
+              done
             done
-
-            echo "✅ Uploaded $COUNT zip(s)"
 
   trigger-terraform:
     docker:
@@ -92,9 +105,9 @@ jobs:
               -H "Content-Type: application/json" \
               -d '{ 
                 "branch": "master",
-                 "parameters": {
-                    "run_from_lambda": true
-                  }
+                "parameters": {
+                  "run_from_lambda": true
+                }
               }'
 
 workflows:
@@ -104,6 +117,6 @@ workflows:
       - upload-zips:
           requires:
             - build-zips
-      - trigger-terraform:
-          requires:
-            - upload-zips
+      # - trigger-terraform:
+      #     requires:
+      #       - upload-zips
