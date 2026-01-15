@@ -1,9 +1,12 @@
-name: Hello World
+name: Hello World with AWS
 
 on:
   push:
     branches:
       - master
+
+env:
+  APP_NAME: terra-lambdas
 
 jobs:
   hello:
@@ -12,3 +15,13 @@ jobs:
     steps:
       - name: Say Hello
         run: echo "Hello World 👋"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Verify AWS access
+        run: aws sts get-caller-identity
