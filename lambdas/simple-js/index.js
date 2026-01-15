@@ -2,7 +2,7 @@ exports.handler = async (event) => {
   return {
     statusCode: 200,
     body: JSON.stringify({
-      message: "Hello from plain JavaScript Updated Lambda!",
+      message: "Hello from plain JavaScript Updated Lambda with Detect changed Lambdas and Layers!",
       input: event
     })
   };
