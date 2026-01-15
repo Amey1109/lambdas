@@ -42,7 +42,6 @@ jobs:
 
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || \
              ! git cat-file -e "$BEFORE" 2>/dev/null; then
-            echo "⚠️ Invalid before SHA, using HEAD~1"
             BASE="$(git rev-parse HEAD~1)"
           else
             BASE="$BEFORE"
@@ -53,15 +52,15 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
+          # Extract lambda folder names safely
           CHANGED_LAMBDAS="$(echo "$CHANGED_FILES" \
-            | grep '^lambdas/' || true \
-            | cut -d/ -f2 \
+            | awk -F/ '$1=="lambdas"{print $2}' \
             | sort -u \
             | tr '\n' ' ')"
 
+          # Extract layer folder names safely
           CHANGED_LAYERS="$(echo "$CHANGED_FILES" \
-            | grep '^layers/' || true \
-            | cut -d/ -f2 \
+            | awk -F/ '$1=="layers"{print $2}' \
             | sort -u \
             | tr '\n' ' ')"
 
