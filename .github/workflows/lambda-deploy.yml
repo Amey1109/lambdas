@@ -169,8 +169,5 @@ jobs:
             -H "Circle-Token: ${{ secrets.CIRCLECI_PAT }}" \
             -H "Content-Type: application/json" \
             -d '{
-              "branch": "dev",
-              "parameters": {
-                "run_from_lambda": true
-              }
+              "branch": "dev"
             }'
