@@ -102,19 +102,19 @@ jobs:
             done
           done
 
-  # trigger-terraform:
-  #   runs-on: ubuntu-latest
-  #   needs: upload-zips
+  trigger-terraform:
+    runs-on: ubuntu-latest
+    needs: upload-zips
 
-  #   steps:
-  #     - name: Trigger Terraform pipeline
-  #       run: |
-  #         curl -X POST https://circleci.com/api/v2/project/github/Amey1109/terra-lambdas/pipeline \
-  #           -H "Circle-Token: ${{ secrets.CIRCLECI_TOKEN }}" \
-  #           -H "Content-Type: application/json" \
-  #           -d '{
-  #             "branch": "dev",
-  #             "parameters": {
-  #               "run_from_lambda": true
-  #             }
-  #           }'
+    steps:
+      - name: Trigger Terraform pipeline
+        run: |
+          curl -X POST https://circleci.com/api/v2/project/github/Amey1109/terra-lambdas/pipeline \
+            -H "Circle-Token: ${{ secrets.CIRCLECI_PAT }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "branch": "dev",
+              "parameters": {
+                "run_from_lambda": true
+              }
+            }'
