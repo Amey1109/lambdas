@@ -40,29 +40,30 @@ jobs:
 
           echo "🔍 Detecting changes..."
 
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || \
+             ! git cat-file -e "$BEFORE" 2>/dev/null; then
             echo "⚠️ Invalid before SHA, using HEAD~1"
             BASE="$(git rev-parse HEAD~1)"
           else
             BASE="$BEFORE"
           fi
 
-          CHANGED_FILES=$(git diff --name-only "$BASE" "$AFTER" || true)
+          CHANGED_FILES="$(git diff --name-only "$BASE" "$AFTER" || true)"
 
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
-          CHANGED_LAMBDAS=$(echo "$CHANGED_FILES" \
-            | grep '^lambdas/' \
+          CHANGED_LAMBDAS="$(echo "$CHANGED_FILES" \
+            | grep '^lambdas/' || true \
             | cut -d/ -f2 \
             | sort -u \
-            | tr '\n' ' ')
+            | tr '\n' ' ')"
 
-          CHANGED_LAYERS=$(echo "$CHANGED_FILES" \
-            | grep '^layers/' \
+          CHANGED_LAYERS="$(echo "$CHANGED_FILES" \
+            | grep '^layers/' || true \
             | cut -d/ -f2 \
             | sort -u \
-            | tr '\n' ' ')
+            | tr '\n' ' ')"
 
           echo "changed_lambdas=$CHANGED_LAMBDAS" >> "$GITHUB_OUTPUT"
           echo "changed_layers=$CHANGED_LAYERS" >> "$GITHUB_OUTPUT"
