@@ -9,9 +9,15 @@ jobs:
   build-zips:
     runs-on: ubuntu-latest
 
+    outputs:
+      changed_lambdas: ${{ steps.changes.outputs.changed_lambdas }}
+      changed_layers: ${{ steps.changes.outputs.changed_layers }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -23,32 +29,60 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y zip python3 python3-pip
 
+      - name: Detect changed Lambdas and Layers
+        id: changes
+        run: |
+          set -euo pipefail
+
+          BASE_SHA="${{ github.event.before }}"
+          HEAD_SHA="${{ github.sha }}"
+
+          echo "🔍 Diffing $BASE_SHA → $HEAD_SHA"
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          CHANGED_LAMBDAS=$(echo "$CHANGED_FILES" \
+            | grep '^lambdas/' \
+            | cut -d/ -f2 \
+            | sort -u \
+            | tr '\n' ' ')
+
+          CHANGED_LAYERS=$(echo "$CHANGED_FILES" \
+            | grep '^layers/' \
+            | cut -d/ -f2 \
+            | sort -u \
+            | tr '\n' ' ')
+
+          echo "changed_lambdas=$CHANGED_LAMBDAS" >> $GITHUB_OUTPUT
+          echo "changed_layers=$CHANGED_LAYERS" >> $GITHUB_OUTPUT
+
+          echo "✅ Changed Lambdas: $CHANGED_LAMBDAS"
+          echo "✅ Changed Layers: $CHANGED_LAYERS"
+
       - name: Build Lambda zips
+        if: steps.changes.outputs.changed_lambdas != ''
         run: |
           set -euo pipefail
           mkdir -p zips/lambdas
 
-          for dir in lambdas/*/; do
-            name=$(basename "$dir")
+          for name in ${{ steps.changes.outputs.changed_lambdas }}; do
             echo "🚀 Building lambda: $name"
-
-            cd "$dir"
+            cd "lambdas/$name"
             zip -rq "../../zips/lambdas/${name}.zip" .
             cd - >/dev/null
           done
 
       - name: Build Layer zips
+        if: steps.changes.outputs.changed_layers != ''
         run: |
           set -euo pipefail
           mkdir -p zips/layers
 
-          for layer in layers/*/; do
-            layer_name=$(basename "$layer")
+          for layer_name in ${{ steps.changes.outputs.changed_layers }}; do
             zip_name="${layer_name}-layer.zip"
-
             echo "📦 Building layer: $zip_name"
 
-            cd "$layer"
+            cd "layers/$layer_name"
 
             if [ ! -d nodejs ]; then
               echo "❌ Layer $layer_name missing nodejs/ directory"
@@ -56,17 +90,19 @@ jobs:
             fi
 
             cd nodejs
-
             if [ -f package.json ]; then
               npm ci --omit=dev
             fi
-
             cd ..
+
             zip -rq "../../zips/layers/$zip_name" nodejs
             cd - >/dev/null
           done
 
       - name: Upload zip artifacts
+        if: |
+          steps.changes.outputs.changed_lambdas != '' ||
+          steps.changes.outputs.changed_layers != ''
         uses: actions/upload-artifact@v4
         with:
           name: lambda-zips
@@ -75,6 +111,9 @@ jobs:
   upload-zips:
     runs-on: ubuntu-latest
     needs: build-zips
+    if: |
+      needs.build-zips.outputs.changed_lambdas != '' ||
+      needs.build-zips.outputs.changed_layers != ''
 
     steps:
       - name: Download zip artifacts
@@ -96,15 +135,19 @@ jobs:
           BUCKET="terra-lambdas"
 
           for type in lambdas layers; do
-            for zip in zips/$type/*.zip; do
-              echo "☁️ Uploading $zip"
-              aws s3 cp "$zip" "s3://$BUCKET/$type/$(basename "$zip")"
-            done
+            if [ -d "zips/$type" ]; then
+              for zip in zips/$type/*.zip; do
+                [ -e "$zip" ] || continue
+                echo "☁️ Uploading $zip"
+                aws s3 cp "$zip" "s3://$BUCKET/$type/$(basename "$zip")"
+              done
+            fi
           done
 
   trigger-terraform:
     runs-on: ubuntu-latest
     needs: upload-zips
+    if: success()
 
     steps:
       - name: Trigger Terraform pipeline
