@@ -5,7 +5,7 @@ def lambda_handler(event, context):
     return {
         "statusCode": 200,
         "body": json.dumps({
-            "message": "Hello from Python Lambda Updated!!!!",
+            "message": "Hello from Python Lambda Updated Python!!!!",
             "input": event
         })
     }
