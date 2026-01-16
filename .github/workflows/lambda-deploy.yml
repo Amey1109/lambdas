@@ -109,7 +109,10 @@ jobs:
 
       - name: Upload Lambda & Layer zips to S3
         run: |
-          BUCKET="terra-lambdas"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            BUCKET="prod-terra-lambdas"
+          else
+            BUCKET="dev-terra-lambdas"
           for type in lambdas layers; do
             if [ -d "zips/$type" ]; then
               for zip in zips/$type/*.zip; do
@@ -134,7 +137,7 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             IS_DEV=false
             IS_PROD=true
-            CIRCLE_BRANCH="release"
+            CIRCLE_BRANCH="master"
           else
             IS_DEV=true
             IS_PROD=false
