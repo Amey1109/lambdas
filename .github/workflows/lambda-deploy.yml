@@ -131,7 +131,7 @@ jobs:
           done
 
   # ------------------------------------------------------------
-  # 3. Reconcile missing artifacts (correctness)
+  # 3. Reconcile missing artifacts (guarantee Terraform correctness)
   # ------------------------------------------------------------
   reconcile-zips:
     runs-on: ubuntu-latest
@@ -169,6 +169,9 @@ jobs:
             BUCKET="dev-terra-lambdas"
           fi
 
+          ########################
+          # Lambdas
+          ########################
           echo "Reconciling Lambdas..."
           for dir in lambdas/*; do
             name=$(basename "$dir")
@@ -181,9 +184,14 @@ jobs:
               cd - >/dev/null
               aws s3 cp "${name}.zip" "s3://$BUCKET/$key"
               rm "${name}.zip"
+            else
+              echo "✅ Lambda zip exists: $name"
             fi
           done
 
+          ########################
+          # Layers
+          ########################
           echo "Reconciling Layers..."
           for dir in layers/*; do
             name=$(basename "$dir")
@@ -198,6 +206,8 @@ jobs:
               aws s3 cp "../${name}-layer.zip" "s3://$BUCKET/$key"
               rm "../${name}-layer.zip"
               cd - >/dev/null
+            else
+              echo "✅ Layer zip exists: $name"
             fi
           done
 
