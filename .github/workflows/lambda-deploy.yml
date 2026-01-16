@@ -113,6 +113,8 @@ jobs:
             BUCKET="prod-terra-lambdas"
           else
             BUCKET="dev-terra-lambdas"
+          fi
+
           for type in lambdas layers; do
             if [ -d "zips/$type" ]; then
               for zip in zips/$type/*.zip; do
