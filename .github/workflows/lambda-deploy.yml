@@ -3,7 +3,9 @@ name: Lambda Deploy
 on:
   push:
     branches:
-      - master
+      - dev
+    tags:
+      - "*"
 
 jobs:
   build-zips:
@@ -38,8 +40,6 @@ jobs:
           BEFORE="${{ github.event.before }}"
           AFTER="${{ github.sha }}"
 
-          echo "🔍 Detecting changes..."
-
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || \
              ! git cat-file -e "$BEFORE" 2>/dev/null; then
             BASE="$(git rev-parse HEAD~1)"
@@ -49,35 +49,17 @@ jobs:
 
           CHANGED_FILES="$(git diff --name-only "$BASE" "$AFTER" || true)"
 
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
-
-          # Extract lambda folder names safely
-          CHANGED_LAMBDAS="$(echo "$CHANGED_FILES" \
-            | awk -F/ '$1=="lambdas"{print $2}' \
-            | sort -u \
-            | tr '\n' ' ')"
-
-          # Extract layer folder names safely
-          CHANGED_LAYERS="$(echo "$CHANGED_FILES" \
-            | awk -F/ '$1=="layers"{print $2}' \
-            | sort -u \
-            | tr '\n' ' ')"
+          CHANGED_LAMBDAS="$(echo "$CHANGED_FILES" | awk -F/ '$1=="lambdas"{print $2}' | sort -u | tr '\n' ' ')"
+          CHANGED_LAYERS="$(echo "$CHANGED_FILES" | awk -F/ '$1=="layers"{print $2}' | sort -u | tr '\n' ' ')"
 
           echo "changed_lambdas=$CHANGED_LAMBDAS" >> "$GITHUB_OUTPUT"
           echo "changed_layers=$CHANGED_LAYERS" >> "$GITHUB_OUTPUT"
 
-          echo "✅ Lambdas changed: $CHANGED_LAMBDAS"
-          echo "✅ Layers changed: $CHANGED_LAYERS"
-
       - name: Build Lambda zips
         if: steps.changes.outputs.changed_lambdas != ''
         run: |
-          set -euo pipefail
           mkdir -p zips/lambdas
-
           for name in ${{ steps.changes.outputs.changed_lambdas }}; do
-            echo "🚀 Building lambda: $name"
             cd "lambdas/$name"
             zip -rq "../../zips/lambdas/${name}.zip" .
             cd - >/dev/null
@@ -86,27 +68,12 @@ jobs:
       - name: Build Layer zips
         if: steps.changes.outputs.changed_layers != ''
         run: |
-          set -euo pipefail
           mkdir -p zips/layers
-
           for layer_name in ${{ steps.changes.outputs.changed_layers }}; do
-            zip_name="${layer_name}-layer.zip"
-            echo "📦 Building layer: $zip_name"
-
-            cd "layers/$layer_name"
-
-            if [ ! -d nodejs ]; then
-              echo "❌ Layer $layer_name missing nodejs/ directory"
-              exit 1
-            fi
-
-            cd nodejs
-            if [ -f package.json ]; then
-              npm ci --omit=dev
-            fi
+            cd "layers/$layer_name/nodejs"
+            npm ci --omit=dev || true
             cd ..
-
-            zip -rq "../../zips/layers/$zip_name" nodejs
+            zip -rq "../../zips/layers/${layer_name}-layer.zip" nodejs
             cd - >/dev/null
           done
 
@@ -142,14 +109,11 @@ jobs:
 
       - name: Upload Lambda & Layer zips to S3
         run: |
-          set -euo pipefail
           BUCKET="terra-lambdas"
-
           for type in lambdas layers; do
             if [ -d "zips/$type" ]; then
               for zip in zips/$type/*.zip; do
                 [ -e "$zip" ] || continue
-                echo "☁️ Uploading $zip"
                 aws s3 cp "$zip" "s3://$BUCKET/$type/$(basename "$zip")"
               done
             fi
@@ -163,11 +127,27 @@ jobs:
       needs.build-zips.outputs.changed_layers != ''
 
     steps:
-      - name: Trigger Terraform pipeline
+      - name: Trigger CircleCI Terraform pipeline
         run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            IS_DEV=false
+            IS_PROD=true
+            CIRCLE_BRANCH="release"
+          else
+            IS_DEV=true
+            IS_PROD=false
+            CIRCLE_BRANCH="dev"
+          fi
+
           curl -X POST https://circleci.com/api/v2/project/github/Amey1109/terra-lambdas/pipeline \
             -H "Circle-Token: ${{ secrets.CIRCLECI_PAT }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "branch": "dev"
-            }'
+            -d "{
+              \"branch\": \"$CIRCLE_BRANCH\",
+              \"parameters\": {
+                \"is_dev\": $IS_DEV,
+                \"is_prod\": $IS_PROD
+              }
+            }"
